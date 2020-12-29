@@ -1,5 +1,5 @@
 #import "ReceiveSharingIntentPlugin.h"
-#import "SwiftReceiveSharingIntentPlugin-Swift.h"
+#import <receive_sharing_intent/receive_sharing_intent-Swift.h>	
 
 @implementation ReceiveSharingIntentPlugin
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {

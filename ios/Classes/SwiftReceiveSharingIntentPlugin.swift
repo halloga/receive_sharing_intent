@@ -118,7 +118,7 @@ public class SwiftReceiveSharingIntentPlugin: NSObject, FlutterPlugin, FlutterSt
                 }
                 eventSinkText?(latestText)
             }
-            return true
+            return false
         }
         
         latestMedia = nil

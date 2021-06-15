@@ -1,6 +1,6 @@
 # receive_sharing_intent_example
 
-A flutter plugin that enables flutter apps to receive sharing photos, videos, text and urls from other apps.
+A flutter plugin that enables flutter apps to receive sharing photos, videos, text, urls or any other file types from another app.
 
 Also, supports iOS Share extension and launching the host app automatically. 
 
@@ -71,6 +71,18 @@ android/app/src/main/manifest.xml
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="video/*" />
             </intent-filter>
+
+            <!--TODO: Add this filter, if you want to support sharing any type of files-->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
       </activity>
       
   </application>
@@ -91,7 +103,7 @@ ios/Runner/info.plist
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>SharePhotos</string>
+				<string>ShareMedia</string>
 			</array>
 		</dict>
 		<dict/>
@@ -134,13 +146,17 @@ ios/Share Extension/info.plist
                 <true/>
                 <!--TODO: Add this tag, if you want to support sharing urls into your app-->
             	<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-            	<string>1</string>
+            	<integer>1</integer>
             	<!--TODO: Add this flag, if you want to support sharing images into your app-->
                 <key>NSExtensionActivationSupportsImageWithMaxCount</key>
                 <integer>100</integer>
                 <!--TODO: Add this flag, if you want to support sharing video into your app-->
                 <key>NSExtensionActivationSupportsMovieWithMaxCount</key>
                 <integer>100</integer>
+                <!--TODO: Add this flag, if you want to support sharing other files into your app-->
+                <!--Change the integer to however many files you want to be able to share at a time-->
+				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>1</integer>
             </dict>
         </dict>
 		<key>NSExtensionMainStoryboard</key>
@@ -181,22 +197,29 @@ class ShareViewController: SLComposeServiceViewController {
     let videoContentType = kUTTypeMovie as String
     let textContentType = kUTTypeText as String
     let urlContentType = kUTTypeURL as String
+    let fileURLType = kUTTypeFileURL as String;
     
     override func isContentValid() -> Bool {
         return true
     }
     
     override func viewDidLoad() {
+        super.viewDidLoad();
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
         // This is called after the user selects Post. Do the upload of contentText and/or NSExtensionContext attachments.
-        
         if let content = extensionContext!.inputItems[0] as? NSExtensionItem {
             if let contents = content.attachments {
-                for (index, attachment) in (contents as! [NSItemProvider]).enumerated() {
-                    
+                for (index, attachment) in (contents).enumerated() {
                     if attachment.hasItemConformingToTypeIdentifier(imageContentType) {
                         handleImages(content: content, attachment: attachment, index: index)
                     } else if attachment.hasItemConformingToTypeIdentifier(textContentType) {
                         handleText(content: content, attachment: attachment, index: index)
+                    } else if attachment.hasItemConformingToTypeIdentifier(fileURLType) {
+                        handleFiles(content: content, attachment: attachment, index: index)
                     } else if attachment.hasItemConformingToTypeIdentifier(urlContentType) {
                         handleUrl(content: content, attachment: attachment, index: index)
                     } else if attachment.hasItemConformingToTypeIdentifier(videoContentType) {
@@ -321,10 +344,38 @@ class ShareViewController: SLComposeServiceViewController {
         }
     }
     
+    private func handleFiles (content: NSExtensionItem, attachment: NSItemProvider, index: Int) {
+        attachment.loadItem(forTypeIdentifier: fileURLType, options: nil) { [weak self] data, error in
+
+            if error == nil, let url = data as? URL, let this = self {
+
+                // Always copy
+                let newName = this.getFileName(from :url)
+                let newPath = FileManager.default
+                    .containerURL(forSecurityApplicationGroupIdentifier: "group.\(this.hostAppBundleIdentifier)")!
+                    .appendingPathComponent("\(newName)")
+                let copied = this.copyFile(at: url, to: newPath)
+                if (copied) {
+                    this.sharedMedia.append(SharedMediaFile(path: newPath.absoluteString, thumbnail: nil, duration: nil, type: .file))
+                }
+
+                if index == (content.attachments?.count)! - 1 {
+                    let userDefaults = UserDefaults(suiteName: "group.\(this.hostAppBundleIdentifier)")
+                    userDefaults?.set(this.toData(data: this.sharedMedia), forKey: this.sharedKey)
+                    userDefaults?.synchronize()
+                    this.redirectToHostApp(type: .file)
+                }
+
+            } else {
+                self?.dismissWithError()
+            }
+        }
+    }
+    
     private func dismissWithError() {
-        print("GETTING ERROR")
+        print("[ERROR] Error loading data!")
         let alert = UIAlertController(title: "Error", message: "Error loading data", preferredStyle: .alert)
-        
+
         let action = UIAlertAction(title: "Error", style: .cancel) { _ in
             self.dismiss(animated: true, completion: nil)
         }
@@ -335,7 +386,7 @@ class ShareViewController: SLComposeServiceViewController {
     }
     
     private func redirectToHostApp(type: RedirectType) {
-        let url = URL(string: "SharePhotos://dataUrl=\(sharedKey)#\(type)")
+        let url = URL(string: "ShareMedia://dataUrl=\(sharedKey)#\(type)")
         var responder = self as UIResponder?
         let selectorOpenURL = sel_registerName("openURL:")
         
@@ -351,6 +402,7 @@ class ShareViewController: SLComposeServiceViewController {
     enum RedirectType {
         case media
         case text
+        case file
     }
     
     func getExtension(from url: URL, type: SharedMediaType) -> String {
@@ -362,13 +414,25 @@ class ShareViewController: SLComposeServiceViewController {
         
         if (ex == nil) {
             switch type {
-            case .image:
-                ex = "PNG"
-            case .video:
-                ex = "MP4"
+                case .image:
+                    ex = "PNG"
+                case .video:
+                    ex = "MP4"
+                case .file:
+                    ex = "TXT"
             }
         }
         return ex ?? "Unknown"
+    }
+    
+    func getFileName(from url: URL) -> String {
+        var name = url.lastPathComponent
+        
+        if (name == "") {
+            name = UUID().uuidString + "." + getExtension(from: url, type: .file)
+        }
+        
+        return name
     }
     
     func copyFile(at srcURL: URL, to dstURL: URL) -> Bool {
@@ -378,7 +442,7 @@ class ShareViewController: SLComposeServiceViewController {
             }
             try FileManager.default.copyItem(at: srcURL, to: dstURL)
         } catch (let error) {
-            print("Cannot copy item at \(srcURL) to \(dstURL): \(error)")
+            print("Cannot copy item at \(srcURL) to \(dstURL): \(error)") 
             return false
         }
         return true
@@ -399,8 +463,8 @@ class ShareViewController: SLComposeServiceViewController {
         //        let scale = UIScreen.main.scale
         assetImgGenerate.maximumSize =  CGSize(width: 360, height: 360)
         do {
-            let img = try assetImgGenerate.copyCGImage(at: CMTimeMakeWithSeconds(1.0, 600), actualTime: nil)
-            try UIImagePNGRepresentation(UIImage(cgImage: img))?.write(to: thumbnailPath)
+            let img = try assetImgGenerate.copyCGImage(at: CMTimeMakeWithSeconds(600, preferredTimescale: Int32(1.0)), actualTime: nil)
+            try UIImage.pngData(UIImage(cgImage: img))()?.write(to: thumbnailPath)
             saved = true
         } catch {
             saved = false
@@ -431,11 +495,17 @@ class ShareViewController: SLComposeServiceViewController {
             self.duration = duration
             self.type = type
         }
+
+        // Debug method to print out SharedMediaFile details in the console
+        func toString() {
+            print("[SharedMediaFile] \n\tpath: \(self.path)\n\tthumbnail: \(self.thumbnail)\n\tduration: \(self.duration)\n\ttype: \(self.type)")
+        }
     }
     
     enum SharedMediaType: Int, Codable {
         case image
         case video
+        case file
     }
     
     func toData(data: [SharedMediaFile]) -> Data {

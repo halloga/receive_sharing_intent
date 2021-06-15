@@ -1,9 +1,51 @@
+## 1.4.5
+
+* Update android to use compileSdkVersion 30
+
+## 1.4.4
+
+* Enabled null safety
+* Fix frozen app after sharing. Fix requires you to update your Sharing Extension Class (Check example project)
+* Fix regression regarding link propagation
+
+## 1.4.3
+
+* Fix suppressed link propagation to other modules on iOS
+
+## 1.4.2
+
+* Migrage to flutter android embedding v2
+* Fix crash while getting raw files path on Android
+
+## 1.4.1
+
+* Preserve original file name
+
+Note. Updating your Sharing Extension Class is required (please check that in the example project)
+
+## 1.4.0
+
+* Added support for sharing any type of file
+
+# Breaking changes
+
+* In your project `ios/Runner/Info.plist` please change 'SharePhotos' to 'ShareMedia' as follows
+```xml
+    <key>CFBundleURLSchemes</key>
+    <array>
+    	<string>ShareMedia</string>
+```
+
+## 1.3.3
+
+* Fixed the >= 4.2 Swift compiler parsing errors
+
 ## 1.3.2
 
 * Fix Some photos and videos have wrong extension names
 * Fix sharing dialog doesn't close properly
 
-Note. Both fixes require you to update your Sharing Extension Class (please check check that in the example project)
+Note. Both fixes require you to update your Sharing Extension Class (please check that in the example project)
 
 ## 1.3.1+1
 
